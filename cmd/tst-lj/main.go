@@ -27,13 +27,23 @@ func main() {
 	v1 := flag.Bool("v1", false, "Enable protocol version v1")
 	v2 := flag.Bool("v2", false, "Enable protocol version v2")
 	limit := flag.Int("rate", 0, "max batch ack rate")
+	es := flag.Bool("es", false, "Enable simplified es bulk protocol")
+	esSplit := flag.Int("split", 2048, "Batch split limit for es bulk events")
+	esSilent := flag.Bool("silent", false, "If enabled send empty response")
+	quiet := flag.Bool("q", false, "Quiet")
+
 	flag.Parse()
 
 	s, err := server.ListenAndServe(*bind,
 		server.V1(*v1),
-		server.V2(*v2))
+		server.V2(*v2),
+		server.ES(*es),
+		server.Split(*esSplit),
+		server.Silent(*esSilent),
+	)
 	if err != nil {
 		log.Fatal(err)
+		os.Exit(1)
 	}
 
 	log.Println("tcp server up")
@@ -54,17 +64,25 @@ func main() {
 		os.Exit(0)
 	}()
 
+	debug := !*quiet
 	if rl == nil {
+		log.Println("no rate limit")
 		for batch := range s.ReceiveChan() {
-			log.Printf("Received batch of %v events\n", len(batch.Events))
+			if debug {
+				log.Printf("Received batch of %v events\n", len(batch.Events))
+			}
 			batch.ACK()
 		}
 	} else {
+		log.Println("rate limit: ", *limit)
 		for batch := range s.ReceiveChan() {
 			if !rl.Wait() {
 				break
 			}
-			log.Printf("Received batch of %v events\n", len(batch.Events))
+
+			if debug {
+				log.Printf("Received batch of %v events\n", len(batch.Events))
+			}
 			batch.ACK()
 		}
 	}

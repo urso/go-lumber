@@ -3,6 +3,7 @@ package v2
 import (
 	"errors"
 	"net"
+	"time"
 
 	"github.com/elastic/go-lumber/lj"
 	"github.com/elastic/go-lumber/server/internal"
@@ -64,6 +65,17 @@ func (s *Server) Close() error {
 	return s.s.Close()
 }
 
+func MakeIOHandler(
+	timeout time.Duration,
+	decoder func([]byte, interface{}) error,
+) func(client net.Conn) (internal.BatchReader, internal.ACKWriter, error) {
+	return func(client net.Conn) (internal.BatchReader, internal.ACKWriter, error) {
+		r := newReader(client, timeout, decoder)
+		w := newWriter(client, timeout)
+		return r, w, nil
+	}
+}
+
 func newServer(
 	opts []Option,
 	mk func(cfg internal.Config) (*internal.Server, error),
@@ -73,12 +85,7 @@ func newServer(
 		return nil, err
 	}
 
-	mkRW := func(client net.Conn) (internal.BatchReader, internal.ACKWriter, error) {
-		r := newReader(client, o.timeout, o.decoder)
-		w := newWriter(client, o.timeout)
-		return r, w, nil
-	}
-
+	mkRW := MakeIOHandler(o.timeout, o.decoder)
 	cfg := internal.Config{
 		TLS:     o.tls,
 		Handler: internal.DefaultHandler(o.keepalive, mkRW),

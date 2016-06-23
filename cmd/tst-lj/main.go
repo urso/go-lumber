@@ -26,12 +26,14 @@ func main() {
 	bind := flag.String("bind", ":5044", "[host]:port to listen on")
 	v1 := flag.Bool("v1", false, "Enable protocol version v1")
 	v2 := flag.Bool("v2", false, "Enable protocol version v2")
+	http := flag.Bool("http", false, "Enable lumberjack over HTTP")
 	limit := flag.Int("rate", 0, "max batch ack rate")
 	flag.Parse()
 
 	s, err := server.ListenAndServe(*bind,
 		server.V1(*v1),
-		server.V2(*v2))
+		server.V2(*v2),
+		server.HTTP(*http))
 	if err != nil {
 		log.Fatal(err)
 	}

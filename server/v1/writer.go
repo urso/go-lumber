@@ -17,6 +17,10 @@ func newWriter(c net.Conn, to time.Duration) *writer {
 	return &writer{c: c, to: to}
 }
 
+func (w *writer) HasKeepalive() bool {
+	return false
+}
+
 func (w *writer) ACK(n int) error {
 	var buf [6]byte
 	buf[0] = protocol.CodeVersion

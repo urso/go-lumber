@@ -24,6 +24,7 @@ func main() {
 	timeout := flag.Duration("timeout", 30*time.Second, "Connection timeouts")
 	batchSize := flag.Int("batch", 2048, "Batch size")
 	pipelined := flag.Int("pipeline", 0, "enabled pipeline mode with number of batches kept in pipeline")
+	useHTTP := flag.String("http", "", "Use http mode")
 	httpprof := flag.String("httpprof", ":6060", "HTTP profiling server address")
 	flag.Parse()
 
@@ -41,17 +42,37 @@ func main() {
 	}()
 
 	log.Printf("connect to: %v", *connect)
+	if *useHTTP != "" {
+		*pipelined = 0
+	}
+
 	if *pipelined == 0 {
-		cl, err := v2.SyncDial(*connect,
-			v2.CompressionLevel(*compress),
-			v2.Timeout(*timeout))
+		var send func([]interface{}) (int, error)
+		var err error
+
+		if *useHTTP != "" {
+			var cl *v2.HttpClient
+			cl, err = v2.NewHTTPClient(
+				*useHTTP,
+				"", "",
+				&http.Transport{},
+				v2.CompressionLevel(*compress),
+				v2.Timeout(*timeout))
+			send = cl.Send
+		} else {
+			var cl *v2.SyncClient
+			cl, err = v2.SyncDial(*connect,
+				v2.CompressionLevel(*compress),
+				v2.Timeout(*timeout))
+			send = cl.Send
+		}
 		if err != nil {
 			log.Println(err)
 			os.Exit(1)
 		}
 
 		for {
-			_, err := cl.Send(batch)
+			_, err := send(batch)
 			if err != nil {
 				log.Println(err)
 				return

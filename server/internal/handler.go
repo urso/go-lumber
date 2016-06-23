@@ -27,6 +27,7 @@ type BatchReader interface {
 }
 
 type ACKWriter interface {
+	HasKeepalive() bool
 	Keepalive(int) error
 	ACK(int) error
 }

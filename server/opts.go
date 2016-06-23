@@ -19,6 +19,7 @@ type options struct {
 	tls       *tls.Config
 	v1        bool
 	v2        bool
+	http      bool
 	ch        chan *lj.Batch
 }
 
@@ -89,6 +90,14 @@ func V2(b bool) Option {
 	}
 }
 
+// HTTP enables lumberjack over HTTP support.
+func HTTP(b bool) Option {
+	return func(opt *options) error {
+		opt.http = b
+		return nil
+	}
+}
+
 func applyOptions(opts []Option) (options, error) {
 	o := options{
 		decoder:   json.Unmarshal,
@@ -96,6 +105,7 @@ func applyOptions(opts []Option) (options, error) {
 		keepalive: 3 * time.Second,
 		v1:        true,
 		v2:        true,
+		http:      true,
 		tls:       nil,
 	}
 

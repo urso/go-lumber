@@ -9,6 +9,7 @@ import (
 
 	"github.com/elastic/go-lumber/lj"
 	"github.com/elastic/go-lumber/log"
+	"github.com/elastic/go-lumber/server/http"
 	"github.com/elastic/go-lumber/server/v1"
 	"github.com/elastic/go-lumber/server/v2"
 )
@@ -40,7 +41,7 @@ type server struct {
 }
 
 type muxServer struct {
-	mux    byte
+	mux    []byte
 	l      *muxListener
 	server Server
 }
@@ -133,28 +134,45 @@ func newServer(l net.Listener, opts ...Option) (Server, error) {
 		return nil, err
 	}
 
-	var servers []func(net.Listener) (Server, byte, error)
+	var servers []func(net.Listener) (Server, []byte, error)
 
 	log.Printf("Server config: %#v", cfg)
 
 	if cfg.v1 {
-		servers = append(servers, func(l net.Listener) (Server, byte, error) {
+		log.Println("enabled lumberjack v1")
+
+		servers = append(servers, func(l net.Listener) (Server, []byte, error) {
 			s, err := v1.NewWithListener(l,
 				v1.Timeout(cfg.timeout),
 				v1.Channel(cfg.ch),
 				v1.TLS(cfg.tls))
-			return s, '1', err
+			return s, []byte{'1'}, err
 		})
 	}
 	if cfg.v2 {
-		servers = append(servers, func(l net.Listener) (Server, byte, error) {
+		log.Println("enabled lumberjack v2")
+
+		servers = append(servers, func(l net.Listener) (Server, []byte, error) {
 			s, err := v2.NewWithListener(l,
 				v2.Keepalive(cfg.keepalive),
 				v2.Timeout(cfg.timeout),
 				v2.Channel(cfg.ch),
 				v2.TLS(cfg.tls),
 				v2.JSONDecoder(cfg.decoder))
-			return s, '2', err
+			return s, []byte{'2'}, err
+		})
+	}
+	if cfg.http {
+		log.Println("enabled http")
+
+		servers = append(servers, func(l net.Listener) (Server, []byte, error) {
+			s, err := http.NewWithListener(l,
+				http.Keepalive(cfg.keepalive),
+				http.Timeout(cfg.timeout),
+				http.Channel(cfg.ch),
+				http.TLS(cfg.tls),
+				http.JSONDecoder(cfg.decoder))
+			return s, []byte{'H', 'P'}, err // HTTP HEAD,POST requests
 		})
 	}
 
@@ -175,14 +193,14 @@ func newServer(l net.Listener, opts ...Option) (Server, error) {
 	mux := make([]muxServer, len(servers))
 	for i, mk := range servers {
 		muxL := newMuxListener(l)
-		log.Printf("mk: %v", i)
-		s, b, err := mk(muxL)
+		s, bs, err := mk(muxL)
 		if err != nil {
 			return nil, err
 		}
 
+		log.Printf("new mux server for '%v'", bs)
 		mux[i] = muxServer{
-			mux:    b,
+			mux:    bs,
 			l:      muxL,
 			server: s,
 		}
@@ -226,13 +244,13 @@ func (s *server) handle(client net.Conn) {
 		close(sig)
 
 		for _, m := range s.mux {
-			if m.mux != buf[0] {
-				continue
+			for _, b := range m.mux {
+				if b == buf[0] {
+					conn := newMuxConn(buf[0], client)
+					m.l.ch <- conn
+					return
+				}
 			}
-
-			conn := newMuxConn(buf[0], client)
-			m.l.ch <- conn
-			return
 		}
 		client.Close()
 	}()
